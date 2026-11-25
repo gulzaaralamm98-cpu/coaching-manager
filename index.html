@@ -80,18 +80,26 @@ const $ = id => document.getElementById(id);
 const attOf = (id, d = date) => ((db.att[d] || {})[id]) || 'none';
 const feeOf = (id, m = month) => ((db.fee[m] || {})[id]) || 'pending';
 const phoneOf = p => { let d = String(p).replace(/\D/g, ''); if (d.length === 10) d = '91' + d; return d; };
-const absentMsg = (s, d) => `Namaste, aapka bacha ${s.name} aaj (${d}) ${COACH} mein absent hai.`;
-const feeMsg = s => `Namaste, aapke bacche ${s.name} ki fee pending hai. Kripya jald jama karein. - ${COACH}`;
+const GREET = { salam: 'Assalam alaikum', namaste: 'Namaste' };
+const absentMsg = (s, d, g) => `${GREET[g]}, aapka bacha ${s.name} aaj (${d}) ${COACH} mein absent hai.`;
+const feeMsg = (s, g) => `${GREET[g]}, aapke bacche ${s.name} ki fee pending hai. Kripya jald jama karein. - ${COACH}`;
 function markSent(k) { db.sent[k] = Date.now(); save(); }
 
-// WhatsApp / SMS ek tap mein khulte hain, aap bas Send dabayein
-function links(s, msg, key) {
+// Har message ke liye do option: Assalam alaikum aur Namaste (WhatsApp / SMS)
+function links(s, msgFn, key) {
   const p = phoneOf(s.phone);
   const done = db.sent[key] ? '<span class="small">bheja gaya</span>' : '';
-  return `<div class="links">
-    <a href="https://wa.me/${p}?text=${encodeURIComponent(msg)}" target="_blank" onclick="markSent('${key}')">WhatsApp</a>
-    <a href="sms:+${p}?body=${encodeURIComponent(msg)}" onclick="markSent('${key}')">SMS</a>${done}
-  </div>`;
+  const row = g => {
+    const msg = encodeURIComponent(msgFn(g));
+    const k = key + '-' + g;
+    return `<div class="links">
+      <span class="small" style="min-width:86px">${GREET[g]}:</span>
+      <a href="https://wa.me/${p}?text=${msg}" target="_blank" onclick="markSent('${k}')">WhatsApp</a>
+      <a href="sms:+${p}?body=${msg}" onclick="markSent('${k}')">SMS</a>
+      ${db.sent[k] ? '<span class="small">bheja gaya</span>' : ''}
+    </div>`;
+  };
+  return row('salam') + row('namaste');
 }
 
 /* ===== Navigation ===== */
@@ -120,14 +128,14 @@ function dash() {
     <div class="card"><h3>Aaj ke absent students</h3>
       ${absent.length ? absent.map(s => `
         <div class="row"><div style="min-width:0"><div class="name">${esc(s.name)}</div>
-        ${links(s, absentMsg(s, t), 'abs-' + t + '-' + s.id)}</div>
+        ${links(s, g => absentMsg(s, t, g), 'abs-' + t + '-' + s.id)}</div>
         <span class="pill absent">Absent</span></div>`).join('')
         : '<div class="empty">Koi absent nahi, ya attendance abhi nahi li gayi</div>'}
     </div>
     <div class="card"><h3>Fee pending</h3>
       ${pend.length ? pend.map(s => `
         <div class="row"><div style="min-width:0"><div class="name">${esc(s.name)}</div>
-        ${links(s, feeMsg(s), 'fee-' + month + '-' + s.id)}</div>
+        ${links(s, g => feeMsg(s, g), 'fee-' + month + '-' + s.id)}</div>
         <span class="pill pending">Pending</span></div>`).join('')
         : '<div class="empty">Sab ki fee aa gayi</div>'}
     </div>`;
@@ -140,7 +148,7 @@ function att() {
     return `
       <div class="row">
         <div style="min-width:0"><div class="name">${esc(s.name)}</div>
-          ${a === 'absent' ? links(s, absentMsg(s, date), 'abs-' + date + '-' + s.id) : ''}</div>
+          ${a === 'absent' ? links(s, g => absentMsg(s, date, g), 'abs-' + date + '-' + s.id) : ''}</div>
         <div class="seg">
           <button class="${a === 'present' ? 'on-p' : ''}" onclick="mark(${s.id}, 'present')">P</button>
           <button class="${a === 'absent' ? 'on-a' : ''}" onclick="mark(${s.id}, 'absent')">A</button>
@@ -166,7 +174,7 @@ function fee() {
     return `
       <div class="row">
         <div style="min-width:0"><div class="name">${esc(s.name)}</div>
-          ${f === 'pending' ? links(s, feeMsg(s), 'fee-' + month + '-' + s.id) : ''}</div>
+          ${f === 'pending' ? links(s, g => feeMsg(s, g), 'fee-' + month + '-' + s.id) : ''}</div>
         <div style="display:flex;gap:8px;align-items:center">
           <span class="pill ${f}">${f === 'paid' ? 'Paid' : 'Pending'}</span>
           <button class="ghost" onclick="toggleFee(${s.id})">${f === 'paid' ? 'Pending karein' : 'Paid karein'}</button>
@@ -194,7 +202,7 @@ function stu() {
     <div class="card"><h3>Coaching ka naam</h3>
       <div class="form">
         <input id="cn" value="${esc(COACH)}" placeholder="Coaching ka naam">
-        <button onclick="saveCoach()">Naam save karein</button>
+        <button onclick="saveCoach()">Save karein</button>
       </div></div>
     <div class="card"><h3>Naya student</h3>
       <div class="form">
@@ -215,7 +223,7 @@ function saveCoach() {
   COACH = v || 'Our Coaching';
   db.coach = COACH;
   save();
-  alert('Coaching ka naam save ho gaya');
+  alert('Settings save ho gayi');
 }
 function addStu() {
   const name = $('sn').value.trim(), phone = $('sp').value.trim();
