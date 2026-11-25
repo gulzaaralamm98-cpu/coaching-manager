@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Coaching Manager</title>
+<style>
+:root{--bg:#0b0f1a;--card:rgba(255,255,255,.06);--line:rgba(255,255,255,.1);--txt:#e9edf7;--mut:#8b93a7;--g:#22c55e;--r:#ef4444;--a:#8b5cf6;--b:#3b82f6}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:radial-gradient(circle at top left,#1e1b4b,#0b0f1a 60%) fixed;color:var(--txt);min-height:100vh;padding-bottom:90px}
+header{padding:18px 18px 6px}
+h1{margin:0;font-size:22px;background:linear-gradient(90deg,#a5b4fc,#f0abfc);-webkit-background-clip:text;background-clip:text;color:transparent}
+h3{margin:0 0 10px;font-size:16px}
+.sub{color:var(--mut);font-size:13px}
+main{padding:8px 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:14px;backdrop-filter:blur(12px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{border-radius:16px;padding:14px;background:linear-gradient(135deg,var(--c1),var(--c2))}
+.stat b{font-size:26px;display:block}.stat span{font-size:12px;opacity:.9}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.name{font-weight:600}.small{font-size:12px;color:var(--mut)}
+.pill{font-size:12px;padding:5px 11px;border-radius:99px;font-weight:600;white-space:nowrap}
+.paid,.present{background:rgba(34,197,94,.18);color:#4ade80}
+.pending{background:rgba(245,158,11,.18);color:#fbbf24}
+.absent{background:rgba(239,68,68,.18);color:#f87171}
+button,.btn{font:inherit;border:0;border-radius:12px;padding:10px 14px;color:#fff;background:linear-gradient(135deg,var(--a),var(--b));cursor:pointer;font-size:14px}
+.ghost{background:rgba(255,255,255,.08);border:1px solid var(--line)}
+.danger{background:rgba(239,68,68,.2);color:#f87171}
+.seg{display:flex;gap:6px}
+.seg button{padding:8px 14px;background:rgba(255,255,255,.07);border:1px solid var(--line)}
+.seg button.on-p{background:var(--g)}
+.seg button.on-a{background:var(--r)}
+input{font:inherit;background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:11px 12px;width:100%}
+input[type=date],input[type=month]{width:auto}
+.form{display:grid;gap:10px}
+.links{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center}
+.links a{font-size:12px;padding:6px 10px;border-radius:10px;background:rgba(255,255,255,.08);color:var(--txt);text-decoration:none;border:1px solid var(--line)}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:rgba(11,15,26,.92);backdrop-filter:blur(14px);border-top:1px solid var(--line);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+nav button{flex:1;background:none;border:0;color:var(--mut);font-size:12px;padding:8px 2px;border-radius:0;font-weight:600}
+nav button.on{color:#c4b5fd}
+.empty{color:var(--mut);text-align:center;padding:20px}
+</style>
+</head>
+<body>
+<header><h1>Coaching Manager</h1><div class="sub" id="date-label"></div></header>
+<main id="main"></main>
+<nav id="nav"></nav>
+
+<script>
+/* ===== Data (phone ke browser mein save hota hai, bina internet ke bhi chalta hai) ===== */
+const KEY = 'coaching-manager-v1';
+let COACH = 'Our Coaching'; // Students tab mein app ke andar se badal sakte hain
+let db = load();
+let tab = 'dash';
+const p2 = n => String(n).padStart(2, '0');
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`; };
+let date = today();
+let month = date.slice(0, 7);
+
+function load() {
+  try {
+    const d = JSON.parse(localStorage.getItem(KEY));
+    if (d && d.students) {
+      if (d.coach) COACH = d.coach;
+      return d;
+    }
+  } catch (e) {}
+  return { students: [], att: {}, fee: {}, sent: {}, coach: COACH };
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(db)); render(); }
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $ = id => document.getElementById(id);
+const attOf = (id, d = date) => ((db.att[d] || {})[id]) || 'none';
+const feeOf = (id, m = month) => ((db.fee[m] || {})[id]) || 'pending';
+const phoneOf = p => { let d = String(p).replace(/\D/g, ''); if (d.length === 10) d = '91' + d; return d; };
+const GREET = { salam: 'Assalam alaikum', namaste: 'Namaste' };
+const absentMsg = (s, d, g) => `${GREET[g]}, aapka bacha ${s.name} aaj (${d}) ${COACH} mein absent hai.`;
+const feeMsg = (s, g) => `${GREET[g]}, aapke bacche ${s.name} ki fee pending hai. Kripya jald jama karein. - ${COACH}`;
+function markSent(k) { db.sent[k] = Date.now(); save(); }
+
+// Har message ke liye do option: Assalam alaikum aur Namaste (WhatsApp / SMS)
+function links(s, msgFn, key) {
+  const p = phoneOf(s.phone);
+  const done = db.sent[key] ? '<span class="small">bheja gaya</span>' : '';
+  const row = g => {
+    const msg = encodeURIComponent(msgFn(g));
+    const k = key + '-' + g;
+    return `<div class="links">
+      <span class="small" style="min-width:86px">${GREET[g]}:</span>
+      <a href="https://wa.me/${p}?text=${msg}" target="_blank" onclick="markSent('${k}')">WhatsApp</a>
+      <a href="sms:+${p}?body=${msg}" onclick="markSent('${k}')">SMS</a>
+      ${db.sent[k] ? '<span class="small">bheja gaya</span>' : ''}
+    </div>`;
+  };
+  return row('salam') + row('namaste');
+}
+
+/* ===== Navigation ===== */
+function go(t) { tab = t; render(); window.scrollTo(0, 0); }
+function render() {
+  $('date-label').textContent = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  $('nav').innerHTML = [['dash','Home'],['att','Attendance'],['fee','Fees'],['stu','Students']]
+    .map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('');
+  const pages = { dash, att, fee, stu };
+  pages[tab]();
+}
+
+/* ===== Dashboard ===== */
+function dash() {
+  const S = db.students, t = today();
+  const present = S.filter(s => attOf(s.id, t) === 'present').length;
+  const absent = S.filter(s => attOf(s.id, t) === 'absent');
+  const pend = S.filter(s => feeOf(s.id) !== 'paid');
+  $('main').innerHTML = `
+    <div class="grid">
+      <div class="stat" style="--c1:#6366f1;--c2:#8b5cf6"><b>${S.length}</b><span>Total students</span></div>
+      <div class="stat" style="--c1:#059669;--c2:#22c55e"><b>${present}</b><span>Aaj present</span></div>
+      <div class="stat" style="--c1:#dc2626;--c2:#f43f5e"><b>${absent.length}</b><span>Aaj absent</span></div>
+      <div class="stat" style="--c1:#d97706;--c2:#f59e0b"><b>${pend.length}</b><span>Fee pending (${month})</span></div>
+    </div>
+    <div class="card"><h3>Aaj ke absent students</h3>
+      ${absent.length ? absent.map(s => `
+        <div class="row"><div style="min-width:0"><div class="name">${esc(s.name)}</div>
+        ${links(s, g => absentMsg(s, t, g), 'abs-' + t + '-' + s.id)}</div>
+        <span class="pill absent">Absent</span></div>`).join('')
+        : '<div class="empty">Koi absent nahi, ya attendance abhi nahi li gayi</div>'}
+    </div>
+    <div class="card"><h3>Fee pending</h3>
+      ${pend.length ? pend.map(s => `
+        <div class="row"><div style="min-width:0"><div class="name">${esc(s.name)}</div>
+        ${links(s, g => feeMsg(s, g), 'fee-' + month + '-' + s.id)}</div>
+        <span class="pill pending">Pending</span></div>`).join('')
+        : '<div class="empty">Sab ki fee aa gayi</div>'}
+    </div>`;
+}
+
+/* ===== Attendance ===== */
+function att() {
+  const list = db.students.map(s => {
+    const a = attOf(s.id);
+    return `
+      <div class="row">
+        <div style="min-width:0"><div class="name">${esc(s.name)}</div>
+          ${a === 'absent' ? links(s, g => absentMsg(s, date, g), 'abs-' + date + '-' + s.id) : ''}</div>
+        <div class="seg">
+          <button class="${a === 'present' ? 'on-p' : ''}" onclick="mark(${s.id}, 'present')">P</button>
+          <button class="${a === 'absent' ? 'on-a' : ''}" onclick="mark(${s.id}, 'absent')">A</button>
+        </div>
+      </div>`;
+  }).join('');
+  $('main').innerHTML = `
+    <div class="card">
+      <div class="row" style="border:0;padding:0">
+        <input type="date" value="${date}" onchange="date=this.value;render()">
+        <button class="ghost" onclick="allPresent()">Sab present</button>
+      </div>
+    </div>
+    <div class="card">${list || '<div class="empty">Pehle Students tab mein student add karein</div>'}</div>`;
+}
+function mark(id, st) { db.att[date] = db.att[date] || {}; db.att[date][id] = st; save(); }
+function allPresent() { db.att[date] = db.att[date] || {}; db.students.forEach(s => db.att[date][s.id] = 'present'); save(); }
+
+/* ===== Fees ===== */
+function fee() {
+  const list = db.students.map(s => {
+    const f = feeOf(s.id);
+    return `
+      <div class="row">
+        <div style="min-width:0"><div class="name">${esc(s.name)}</div>
+          ${f === 'pending' ? links(s, g => feeMsg(s, g), 'fee-' + month + '-' + s.id) : ''}</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="pill ${f}">${f === 'paid' ? 'Paid' : 'Pending'}</span>
+          <button class="ghost" onclick="toggleFee(${s.id})">${f === 'paid' ? 'Pending karein' : 'Paid karein'}</button>
+        </div>
+      </div>`;
+  }).join('');
+  $('main').innerHTML = `
+    <div class="card"><input type="month" value="${month}" onchange="month=this.value;render()"></div>
+    <div class="card">${list || '<div class="empty">Koi student nahi</div>'}</div>`;
+}
+function toggleFee(id) {
+  db.fee[month] = db.fee[month] || {};
+  db.fee[month][id] = feeOf(id) === 'paid' ? 'pending' : 'paid';
+  save();
+}
+
+/* ===== Students + Backup ===== */
+function stu() {
+  const list = db.students.map(s => `
+    <div class="row">
+      <div><div class="name">${esc(s.name)}</div><div class="small">${esc(s.phone)}</div></div>
+      <button class="danger" onclick="delStu(${s.id})">Hatayein</button>
+    </div>`).join('');
+  $('main').innerHTML = `
+    <div class="card"><h3>Coaching ka naam</h3>
+      <div class="form">
+        <input id="cn" value="${esc(COACH)}" placeholder="Coaching ka naam">
+        <button onclick="saveCoach()">Save karein</button>
+      </div></div>
+    <div class="card"><h3>Naya student</h3>
+      <div class="form">
+        <input id="sn" placeholder="Student ka naam">
+        <input id="sp" placeholder="Parent ka mobile (10 digit)" inputmode="tel">
+        <button onclick="addStu()">Add karein</button>
+      </div></div>
+    <div class="card"><h3>Students (${db.students.length})</h3>${list || '<div class="empty">Abhi koi student nahi</div>'}</div>
+    <div class="card"><h3>Backup</h3>
+      <p class="small">Data is phone ke browser mein save hota hai. Browser data clear hone se pehle backup file zaroor download karein.</p>
+      <div class="form">
+        <button class="ghost" onclick="exportData()">Backup download karein</button>
+        <input type="file" accept="application/json" onchange="importData(this.files[0])">
+      </div></div>`;
+}
+function saveCoach() {
+  const v = $('cn').value.trim();
+  COACH = v || 'Our Coaching';
+  db.coach = COACH;
+  save();
+  alert('Settings save ho gayi');
+}
+function addStu() {
+  const name = $('sn').value.trim(), phone = $('sp').value.trim();
+  if (!name || phone.replace(/\D/g, '').length < 10) return alert('Naam aur sahi mobile number dalein');
+  db.students.push({ id: Date.now(), name, phone });
+  save();
+}
+function delStu(id) {
+  if (!confirm('Is student ka data hata dein?')) return;
+  db.students = db.students.filter(s => s.id !== id);
+  save();
+}
+function exportData() {
+  const blob = new Blob([JSON.stringify(db)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'coaching-backup-' + today() + '.json';
+  a.click();
+}
+function importData(f) {
+  if (!f) return;
+  f.text().then(t => {
+    const d = JSON.parse(t);
+    if (!d.students) throw new Error('bad');
+    db = d; COACH = d.coach || COACH; save(); alert('Backup restore ho gaya');
+  }).catch(() => alert('Galat backup file'));
+}
+
+render();
+
+// Offline support: ek baar khulne ke baad internet ke bina bhi chalega
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
